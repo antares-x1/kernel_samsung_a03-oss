@@ -26,6 +26,7 @@
 #include <linux/hardirq.h>
 #include <linux/task_work.h>
 #include <linux/ima.h>
+#include <linux/task_integrity.h>
 #include <linux/swap.h>
 
 #include <linux/atomic.h>
@@ -41,6 +42,86 @@ struct files_stat_struct files_stat = {
 static struct kmem_cache *filp_cachep __read_mostly;
 
 static struct percpu_counter nr_files __cacheline_aligned_in_smp;
+
+#if IS_ENABLED(CONFIG_SEC_DEBUG_FPUT_WATCHDOG)
+#include <linux/sched/debug.h>
+#include <linux/sec_debug.h>
+
+struct fput_watchdog {
+	struct file		*file;
+	struct task_struct	*tsk;
+	struct timer_list	timer;
+};
+
+#define DECLARE_FPUT_WATCHDOG_ON_STACK(wd) \
+	struct fput_watchdog wd
+
+/**
+ * fput_watchdog_handler - fput watchdog handler.
+ * @data: Watchdog object address.
+ *
+ * Called when fput() has timed out.
+ * There's not much we can do here to recover so panic() to
+ * capture or recover from it.
+ */
+static void fput_watchdog_handler(struct timer_list *t)
+{
+	struct fput_watchdog *wd = from_timer(wd, t, timer);
+	char d_iname[32] = {0,};
+
+	pr_emerg("**** FPUT timeout ****\npid %8d, %s\n",
+			wd->tsk ? wd->tsk->pid : -1,
+			wd->tsk ? wd->tsk->comm : NULL);
+
+	show_stack(wd->tsk, NULL);
+
+	if (wd->file && wd->file->f_path.dentry)
+		strncpy(d_iname, wd->file->f_path.dentry->d_iname,
+				sizeof(d_iname) - 1);
+
+	if (strncmp(d_iname, "TCP", strlen("TCP"))/* &&
+						     sec_debug_is_enabled() */)
+		panic("__fput() for %s file is not finished for %d sec.\n",
+				d_iname, CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT);
+	else
+		pr_warn("__fput() for %s file is not finished for %d sec.\n",
+				d_iname, CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT);
+}
+
+/**
+ * fput_watchdog_set - Enable watchdog for given fput.
+ * @wd: Watchdog. Must be allocated on the stack.
+ * @file: file to handle.
+ */
+static void fput_watchdog_set(struct fput_watchdog *wd, struct file *file)
+{
+	struct timer_list *timer = &wd->timer;
+
+	wd->file = file;
+	wd->tsk = current;
+
+	timer_setup_on_stack(timer, fput_watchdog_handler, 0);
+	timer->expires = jiffies + HZ * CONFIG_SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT;
+
+	add_timer(timer);
+}
+
+/**
+ * fput_watchdog_clear - Disable watchdog.
+ * @wd: Watchdog to disable.
+ */
+static void fput_watchdog_clear(struct fput_watchdog *wd)
+{
+	struct timer_list *timer = &wd->timer;
+
+	del_timer_sync(timer);
+	destroy_timer_on_stack(timer);
+}
+#else
+#define DECLARE_FPUT_WATCHDOG_ON_STACK(wd)
+#define fput_watchdog_set(x, y)
+#define fput_watchdog_clear(x)
+#endif
 
 static void file_free_rcu(struct rcu_head *head)
 {
@@ -190,8 +271,10 @@ static void __fput(struct file *file)
 	struct dentry *dentry = file->f_path.dentry;
 	struct vfsmount *mnt = file->f_path.mnt;
 	struct inode *inode = file->f_inode;
+	DECLARE_FPUT_WATCHDOG_ON_STACK(wd);
 
 	might_sleep();
+	fput_watchdog_set(&wd, file);
 
 	fsnotify_close(file);
 	/*
@@ -205,6 +288,7 @@ static void __fput(struct file *file)
 		if (file->f_op->fasync)
 			file->f_op->fasync(-1, file, 0);
 	}
+	five_file_free(file);
 	ima_file_free(file);
 	if (file->f_op->release)
 		file->f_op->release(inode, file);
@@ -224,6 +308,7 @@ static void __fput(struct file *file)
 	file->f_path.dentry = NULL;
 	file->f_path.mnt = NULL;
 	file->f_inode = NULL;
+	fput_watchdog_clear(&wd);
 	file_free(file);
 	dput(dentry);
 	mntput(mnt);

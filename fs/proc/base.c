@@ -94,6 +94,7 @@
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
 #include <linux/cpufreq_times.h>
+#include <linux/task_integrity.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -102,6 +103,13 @@
 #include "fd.h"
 
 #include "../../lib/kstrtox.h"
+#ifdef CONFIG_PROTECT_LRU
+#include <linux/protect_lru.h>
+#endif
+
+#ifdef CONFIG_PAGE_BOOST
+#include <linux/delayacct.h>
+#endif
 
 /* NOTE:
  *	Implementing inode permission operations in /proc is almost
@@ -208,39 +216,16 @@ static int proc_root_link(struct dentry *dentry, struct path *path)
 	return result;
 }
 
-static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
-				     size_t _count, loff_t *pos)
+static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
+			      size_t count, loff_t *ppos)
 {
-	struct task_struct *tsk;
-	struct mm_struct *mm;
-	char *page;
-	unsigned long count = _count;
 	unsigned long arg_start, arg_end, env_start, env_end;
-	unsigned long len1, len2, len;
-	unsigned long p;
-	char c;
-	ssize_t rv;
+	unsigned long pos, len;
+	char *page;
 
-	BUG_ON(*pos < 0);
-
-	tsk = get_proc_task(file_inode(file));
-	if (!tsk)
-		return -ESRCH;
-	mm = get_task_mm(tsk);
-	put_task_struct(tsk);
-	if (!mm)
-		return 0;
 	/* Check if process spawned far enough to have cmdline. */
-	if (!mm->env_end) {
-		rv = 0;
-		goto out_mmput;
-	}
-
-	page = (char *)__get_free_page(GFP_KERNEL);
-	if (!page) {
-		rv = -ENOMEM;
-		goto out_mmput;
-	}
+	if (!mm->env_end)
+		return 0;
 
 	down_read(&mm->mmap_sem);
 	arg_start = mm->arg_start;
@@ -249,130 +234,111 @@ static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
 	env_end = mm->env_end;
 	up_read(&mm->mmap_sem);
 
-	BUG_ON(arg_start > arg_end);
-	BUG_ON(env_start > env_end);
+	if (arg_start >= arg_end)
+		return 0;
 
-	len1 = arg_end - arg_start;
-	len2 = env_end - env_start;
-
-	/* Empty ARGV. */
-	if (len1 == 0) {
-		rv = 0;
-		goto out_free_page;
-	}
 	/*
-	 * Inherently racy -- command line shares address space
-	 * with code and data.
+	 * We have traditionally allowed the user to re-write
+	 * the argument strings and overflow the end result
+	 * into the environment section. But only do that if
+	 * the environment area is contiguous to the arguments.
 	 */
-	rv = access_remote_vm(mm, arg_end - 1, &c, 1, FOLL_ANON);
-	if (rv <= 0)
-		goto out_free_page;
+	if (env_start != arg_end || env_start >= env_end)
+		env_start = env_end = arg_end;
 
-	rv = 0;
+	/* We're not going to care if "*ppos" has high bits set */
+	pos = arg_start + *ppos;
 
-	if (c == '\0') {
-		/* Command line (set of strings) occupies whole ARGV. */
-		if (len1 <= *pos)
-			goto out_free_page;
+	/* .. but we do check the result is in the proper range */
+	if (pos < arg_start || pos >= env_end)
+		return 0;
 
-		p = arg_start + *pos;
-		len = len1 - *pos;
-		while (count > 0 && len > 0) {
-			unsigned int _count;
-			int nr_read;
+	/* .. and we never go past env_end */
+	if (env_end - pos < count)
+		count = env_end - pos;
 
-			_count = min3(count, len, PAGE_SIZE);
-			nr_read = access_remote_vm(mm, p, page, _count, FOLL_ANON);
-			if (nr_read < 0)
-				rv = nr_read;
-			if (nr_read <= 0)
-				goto out_free_page;
+	page = (char *)__get_free_page(GFP_KERNEL);
+	if (!page)
+		return -ENOMEM;
 
-			if (copy_to_user(buf, page, nr_read)) {
-				rv = -EFAULT;
-				goto out_free_page;
-			}
+	len = 0;
+	while (count) {
+		int got;
+		size_t size = min_t(size_t, PAGE_SIZE, count);
 
-			p	+= nr_read;
-			len	-= nr_read;
-			buf	+= nr_read;
-			count	-= nr_read;
-			rv	+= nr_read;
+		got = access_remote_vm(mm, pos, page, size, FOLL_ANON);
+		if (got <= 0)
+			break;
+
+		/* Don't walk past a NUL character once you hit arg_end */
+		if (pos + got >= arg_end) {
+			int n = 0;
+
+			/*
+			 * If we started before 'arg_end' but ended up
+			 * at or after it, we start the NUL character
+			 * check at arg_end-1 (where we expect the normal
+			 * EOF to be).
+			 *
+			 * NOTE! This is smaller than 'got', because
+			 * pos + got >= arg_end
+			 */
+			if (pos < arg_end)
+				n = arg_end - pos - 1;
+
+			/* Cut off at first NUL after 'n' */
+			got = n + strnlen(page+n, got-n);
+			if (!got)
+				break;
 		}
-	} else {
-		/*
-		 * Command line (1 string) occupies ARGV and
-		 * extends into ENVP.
-		 */
-		struct {
-			unsigned long p;
-			unsigned long len;
-		} cmdline[2] = {
-			{ .p = arg_start, .len = len1 },
-			{ .p = env_start, .len = len2 },
-		};
-		loff_t pos1 = *pos;
-		unsigned int i;
 
-		i = 0;
-		while (i < 2 && pos1 >= cmdline[i].len) {
-			pos1 -= cmdline[i].len;
-			i++;
+		got -= copy_to_user(buf, page, got);
+		if (unlikely(!got)) {
+			if (!len)
+				len = -EFAULT;
+			break;
 		}
-		while (i < 2) {
-			p = cmdline[i].p + pos1;
-			len = cmdline[i].len - pos1;
-			while (count > 0 && len > 0) {
-				unsigned int _count, l;
-				int nr_read;
-				bool final;
-
-				_count = min3(count, len, PAGE_SIZE);
-				nr_read = access_remote_vm(mm, p, page, _count, FOLL_ANON);
-				if (nr_read < 0)
-					rv = nr_read;
-				if (nr_read <= 0)
-					goto out_free_page;
-
-				/*
-				 * Command line can be shorter than whole ARGV
-				 * even if last "marker" byte says it is not.
-				 */
-				final = false;
-				l = strnlen(page, nr_read);
-				if (l < nr_read) {
-					nr_read = l;
-					final = true;
-				}
-
-				if (copy_to_user(buf, page, nr_read)) {
-					rv = -EFAULT;
-					goto out_free_page;
-				}
-
-				p	+= nr_read;
-				len	-= nr_read;
-				buf	+= nr_read;
-				count	-= nr_read;
-				rv	+= nr_read;
-
-				if (final)
-					goto out_free_page;
-			}
-
-			/* Only first chunk can be read partially. */
-			pos1 = 0;
-			i++;
-		}
+		pos += got;
+		buf += got;
+		len += got;
+		count -= got;
 	}
 
-out_free_page:
 	free_page((unsigned long)page);
-out_mmput:
+	return len;
+}
+
+static ssize_t get_task_cmdline(struct task_struct *tsk, char __user *buf,
+				size_t count, loff_t *pos)
+{
+	struct mm_struct *mm;
+	ssize_t ret;
+
+	mm = get_task_mm(tsk);
+	if (!mm)
+		return 0;
+
+	ret = get_mm_cmdline(mm, buf, count, pos);
 	mmput(mm);
-	if (rv > 0)
-		*pos += rv;
-	return rv;
+	return ret;
+}
+
+static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
+				     size_t count, loff_t *pos)
+{
+	struct task_struct *tsk;
+	ssize_t ret;
+
+	BUG_ON(*pos < 0);
+
+	tsk = get_proc_task(file_inode(file));
+	if (!tsk)
+		return -ESRCH;
+	ret = get_task_cmdline(tsk, buf, count, pos);
+	put_task_struct(tsk);
+	if (ret > 0)
+		*pos += ret;
+	return ret;
 }
 
 static const struct file_operations proc_pid_cmdline_ops = {
@@ -471,6 +437,57 @@ static int proc_pid_stack(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif
 
+#ifdef CONFIG_PAGE_BOOST
+static int proc_pid_ioinfo(struct seq_file *m, struct pid_namespace *ns,
+			      struct pid *pid, struct task_struct *task)
+{
+	struct task_io_accounting acct = task->ioac;
+	unsigned long flags;
+	int result;
+
+	result = mutex_lock_killable(&task->signal->cred_guard_mutex);
+	if (result)
+		return result;
+
+	if (!ptrace_may_access(task, PTRACE_MODE_READ_FSCREDS)) {
+		result = -EACCES;
+		goto out_unlock;
+	}
+
+	if (lock_task_sighand(task, &flags)) {
+		struct task_struct *t = task;
+
+		task_io_accounting_add(&acct, &task->signal->ioac);
+		while_each_thread(task, t)
+			task_io_accounting_add(&acct, &t->ioac);
+
+		unlock_task_sighand(task, &flags);
+	}
+
+	seq_printf(m,
+		   "%llu\n"
+		   "%llu\n"
+		   "%llu\n",
+#ifdef CONFIG_TASK_XACCT
+		   (unsigned long long)acct.rchar,
+#else
+		   (unsigned long long)0,
+#endif
+#ifdef CONFIG_TASK_IO_ACCOUNTING
+		   (unsigned long long)acct.read_bytes,
+#else
+ 		   (unsigned long long)0,                 
+#endif
+		   (unsigned long long)delayacct_blkio_nsecs(task));
+
+	result = 0;
+
+out_unlock:
+	mutex_unlock(&task->signal->cred_guard_mutex);
+	return result;
+}
+#endif
+
 #ifdef CONFIG_SCHED_INFO
 /*
  * Provides /proc/PID/schedstat
@@ -485,6 +502,34 @@ static int proc_pid_schedstat(struct seq_file *m, struct pid_namespace *ns,
 		   (unsigned long long)task->se.sum_exec_runtime,
 		   (unsigned long long)task->sched_info.run_delay,
 		   task->sched_info.pcount);
+
+	return 0;
+}
+
+static int proc_pid_schedinfo(struct seq_file *m, struct pid_namespace *ns,
+			      struct pid *pid, struct task_struct *task)
+{
+	if (unlikely(!sched_info_on()))
+		seq_puts(m, "0 0 0\n");
+	else {
+		struct task_struct *t;
+		u64 total = 0;
+		u64 s_total = 0, b_total = 0;
+
+		rcu_read_lock();
+		for_each_thread(task, t) {
+			total += t->se.sum_exec_runtime;
+			s_total += t->se.s_sum_exec_runtime;
+			b_total += t->se.b_sum_exec_runtime;
+		}
+		rcu_read_unlock();
+		seq_printf(m, "%llu %llu %llu %llu %llu\n",
+			   (unsigned long long)task->se.s_sum_exec_runtime,
+			   (unsigned long long)task->se.b_sum_exec_runtime,
+			   (unsigned long long)s_total,
+			   (unsigned long long)b_total,
+			   (unsigned long long)total);
+	}
 
 	return 0;
 }
@@ -2909,6 +2954,201 @@ static const struct file_operations proc_setgroups_operations = {
 };
 #endif /* CONFIG_USER_NS */
 
+#ifdef CONFIG_FIVE
+static int proc_integrity_value_read(struct seq_file *m,
+		struct pid_namespace *ns, struct pid *pid,
+		struct task_struct *task)
+{
+	seq_printf(m, "%x\n", task_integrity_user_read(task->integrity));
+	return 0;
+}
+
+static int proc_integrity_label_read(struct seq_file *m,
+				struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task)
+{
+	struct integrity_label *l;
+
+	spin_lock(&task->integrity->value_lock);
+	l = task->integrity->label;
+	spin_unlock(&task->integrity->value_lock);
+
+	if (l) {
+		size_t remaining_len;
+		char *buffer = NULL;
+		size_t data_len = l->len * 2;
+
+		seq_printf(m, "%zu\n", data_len);
+		remaining_len = seq_get_buf(m, &buffer);
+
+		if (data_len && remaining_len > 1) {
+			size_t size = min(data_len, remaining_len);
+
+			bin2hex(buffer, l->data, size / 2);
+			seq_commit(m, size);
+		}
+	} else {
+		seq_printf(m, "%d\n", -1);
+	}
+
+	return 0;
+}
+
+static int proc_integrity_reset_cause(struct seq_file *m,
+				struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task)
+{
+	if (task->integrity->reset_cause)
+		seq_printf(m, "%s\n", tint_reset_cause_to_string(
+			task->integrity->reset_cause));
+	else
+		seq_printf(m, "%s", "");
+	return 0;
+}
+
+static int proc_integrity_reset_file(struct seq_file *m,
+				struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task)
+{
+	char *tmp = NULL;
+	char *pathname;
+
+	if (!task->integrity->reset_file) {
+		seq_printf(m, "%s", "");
+		return 0;
+	}
+
+	tmp = (char *)__get_free_page(GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
+
+	pathname = d_path(&task->integrity->reset_file->f_path, tmp, PAGE_SIZE);
+	if (IS_ERR(pathname))
+		goto out;
+
+	seq_printf(m, "%s\n", pathname);
+
+ out:
+	free_page((unsigned long)tmp);
+
+	return 0;
+}
+
+static const struct pid_entry integrity_dir_stuff[] = {
+	ONE("value", S_IRUGO, proc_integrity_value_read),
+	ONE("label", S_IRUGO, proc_integrity_label_read),
+	ONE("reset_cause", S_IRUGO, proc_integrity_reset_cause),
+	ONE("reset_file", S_IRUGO, proc_integrity_reset_file),
+};
+
+static int
+proc_integrity_instantiate(struct inode *dir, struct dentry *dentry,
+			struct task_struct *task, const void *ptr)
+{
+	const struct pid_entry *p = ptr;
+	struct inode *inode;
+	struct proc_inode *ei;
+
+	inode = proc_pid_make_inode(dir->i_sb, task, p->mode);
+	if (!inode)
+		goto out;
+
+	ei = PROC_I(inode);
+	if (S_ISDIR(inode->i_mode))
+		set_nlink(inode, 2);	/* Use getattr to fix if necessary */
+	if (p->iop)
+		inode->i_op = p->iop;
+	if (p->fop)
+		inode->i_fop = p->fop;
+	ei->op = p->op;
+	d_set_d_op(dentry, &pid_dentry_operations);
+	d_add(dentry, inode);
+	/* Close the race of the process dying before we return the dentry */
+	if (pid_revalidate(dentry, 0))
+		return 0;
+out:
+	return -ENOENT;
+}
+
+static struct dentry *proc_integrity_lookup_common(struct inode *dir,
+		struct dentry *dentry, const struct pid_entry *ents,
+		unsigned int nents)
+{
+	int error = -ENOENT;
+	struct task_struct *task = get_proc_task(dir);
+	const struct pid_entry *p, *last;
+
+	if (!task)
+		goto out_no_task;
+
+	last = &ents[nents - 1];
+	for (p = ents; p <= last; ++p) {
+		if (p->len != dentry->d_name.len)
+			continue;
+		if (!memcmp(dentry->d_name.name, p->name, p->len))
+			break;
+	}
+	if (p > last)
+		goto out;
+
+	error = proc_integrity_instantiate(dir, dentry, task, p);
+out:
+	put_task_struct(task);
+out_no_task:
+	return ERR_PTR(error);
+}
+
+static struct dentry *proc_integrity_lookup(struct inode *dir,
+		struct dentry *dentry, unsigned int flags)
+{
+	return proc_integrity_lookup_common(dir, dentry,
+			integrity_dir_stuff, ARRAY_SIZE(integrity_dir_stuff));
+}
+
+static int proc_integrity_readdir_common(struct file *file,
+		struct dir_context *ctx, const struct pid_entry *ents,
+		unsigned int nents)
+{
+	struct task_struct *task = get_proc_task(file_inode(file));
+	const struct pid_entry *p;
+
+	if (!task)
+		return -ENOENT;
+
+	if (!dir_emit_dots(file, ctx))
+		goto out;
+
+	if (ctx->pos >= nents + 2)
+		goto out;
+
+	for (p = ents + (ctx->pos - 2); p <= ents + nents - 1; ++p) {
+		if (!proc_fill_cache(file, ctx, p->name, p->len,
+				proc_integrity_instantiate, task, p))
+			break;
+		++(ctx->pos);
+	}
+out:
+	put_task_struct(task);
+	return 0;
+}
+
+static int proc_integrity_readdir(struct file *file, struct dir_context *ctx)
+{
+	return proc_integrity_readdir_common(file, ctx, integrity_dir_stuff,
+			ARRAY_SIZE(integrity_dir_stuff));
+}
+
+static const struct inode_operations proc_integrity_inode_operations = {
+	.lookup = proc_integrity_lookup,
+};
+
+static const struct file_operations proc_integrity_operations = {
+	.read = generic_read_dir,
+	.iterate = proc_integrity_readdir,
+	.llseek = default_llseek,
+};
+#endif
+
 static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
 {
@@ -2963,6 +3203,13 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("stat",       S_IRUGO, proc_tgid_stat),
 	ONE("statm",      S_IRUGO, proc_pid_statm),
 	REG("maps",       S_IRUGO, proc_pid_maps_operations),
+#ifdef CONFIG_PAGE_BOOST
+	REG("filemap_list",       S_IRUGO, proc_pid_filemap_list_operations),
+	ONE("ioinfo",  S_IRUGO, proc_pid_ioinfo),
+#ifdef CONFIG_PAGE_BOOST_RECORDING
+	REG("io_record_control",      S_IRUGO|S_IWUGO, proc_pid_io_record_operations),
+#endif
+#endif
 #ifdef CONFIG_NUMA
 	REG("numa_maps",  S_IRUGO, proc_pid_numa_maps_operations),
 #endif
@@ -2973,6 +3220,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("mounts",     S_IRUGO, proc_mounts_operations),
 	REG("mountinfo",  S_IRUGO, proc_mountinfo_operations),
 	REG("mountstats", S_IRUSR, proc_mountstats_operations),
+#ifdef CONFIG_PROCESS_RECLAIM
+	REG("reclaim", S_IRUGO|S_IWUGO, proc_reclaim_operations),
+#endif
 #ifdef CONFIG_PROC_PAGE_MONITOR
 	REG("clear_refs", S_IWUSR, proc_clear_refs_operations),
 	REG("smaps",      S_IRUGO, proc_pid_smaps_operations),
@@ -2990,6 +3240,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_SCHED_INFO
 	ONE("schedstat",  S_IRUGO, proc_pid_schedstat),
+	ONE("schedinfo",  0444, proc_pid_schedinfo),
 #endif
 #ifdef CONFIG_LATENCYTOP
 	REG("latency",  S_IRUGO, proc_lstats_operations),
@@ -3033,8 +3284,15 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_LIVEPATCH
 	ONE("patch_state",  S_IRUSR, proc_pid_patch_state),
 #endif
+#ifdef CONFIG_FIVE
+	DIR("integrity", S_IRUGO|S_IXUGO, proc_integrity_inode_operations,
+			proc_integrity_operations),
+#endif
 #ifdef CONFIG_CPU_FREQ_TIMES
 	ONE("time_in_state", 0444, proc_time_in_state_show),
+#endif
+#ifdef CONFIG_PROTECT_LRU
+	REG("protect_level", 0666, proc_protect_level_operations),
 #endif
 };
 
@@ -3396,6 +3654,7 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_SCHED_INFO
 	ONE("schedstat", S_IRUGO, proc_pid_schedstat),
+	ONE("schedinfo", 0444, proc_pid_schedinfo),
 #endif
 #ifdef CONFIG_LATENCYTOP
 	REG("latency",  S_IRUGO, proc_lstats_operations),
@@ -3434,6 +3693,9 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_CPU_FREQ_TIMES
 	ONE("time_in_state", 0444, proc_time_in_state_show),
+#endif
+#ifdef CONFIG_PROTECT_LRU
+	REG("protect_level", 0666, proc_protect_level_operations),
 #endif
 };
 

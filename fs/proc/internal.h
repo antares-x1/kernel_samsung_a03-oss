@@ -199,6 +199,7 @@ struct pde_opener {
 extern const struct inode_operations proc_link_inode_operations;
 
 extern const struct inode_operations proc_pid_link_inode_operations;
+extern const struct file_operations proc_reclaim_operations;
 
 extern void proc_init_inodecache(void);
 void set_proc_pid_nlink(void);
@@ -289,6 +290,20 @@ struct proc_maps_private {
 #ifdef CONFIG_NUMA
 	struct mempolicy *task_mempolicy;
 #endif
+#ifdef CONFIG_ENHANCE_SMAPS_INFO
+	u64 rss;            /* sum of Rss == filecache_rss + anonymous_rss*/
+	u64 pss;            /* sum of Pss == filecache_pss + anonymous_pss*/
+	u64 uss;            /* sum of Uss == filecache_uss + anonymous_uss*/
+	u64 filecache_rss;  /* sum of page_is_file_cache Rss*/
+	u64 anonymous_rss;  /* sum of PageAnon Rss*/
+	u64 filecache_pss;  /* sum of page_is_file_cache Pss */
+	u64 anonymous_pss;  /* sum of PageAnon Pss */
+	u64 filecache_uss;  /* sum of page_is_file_cache Uss */
+	u64 anonymous_uss;  /* sum of PageAnon Uss */
+	u64 swap;           /* sum of Swap for PageAnon */
+	u64 swap_pss;       /* sum of Pswap for PageAnon */
+	u64 swap_uss;       /* sum of Uswap for PageAnon */
+#endif
 } __randomize_layout;
 
 struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode);
@@ -308,3 +323,19 @@ extern unsigned long task_statm(struct mm_struct *,
 				unsigned long *, unsigned long *,
 				unsigned long *, unsigned long *);
 extern void task_mem(struct seq_file *, struct mm_struct *);
+
+#ifdef CONFIG_PAGE_BOOST
+#include <linux/pagevec.h>
+
+#define MAX_PAGE_BOOST_FILEPATH_LEN 256
+
+struct proc_filemap_private {
+	struct proc_maps_private maps_private;
+	struct file *target_file;
+	char target_file_name[MAX_PAGE_BOOST_FILEPATH_LEN + 1];
+	bool show_list; /* true : filemap_list, false : filemap_info */
+};
+
+extern const struct file_operations proc_pid_filemap_list_operations;
+extern const struct file_operations proc_pid_io_record_operations;
+#endif

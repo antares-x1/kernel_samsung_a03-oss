@@ -485,7 +485,7 @@ static int ep_call_nested(struct nested_calls *ncalls, int max_nests,
 	int error, call_nests = 0;
 	unsigned long flags;
 	struct list_head *lsthead = &ncalls->tasks_call_list;
-	struct nested_call_node *tncur;
+	struct nested_call_node *tncur = NULL;
 	struct nested_call_node tnode;
 
 	spin_lock_irqsave(&ncalls->lock, flags);
@@ -891,7 +891,7 @@ static inline unsigned int ep_item_poll(struct epitem *epi, poll_table *pt)
 static int ep_read_events_proc(struct eventpoll *ep, struct list_head *head,
 			       void *priv)
 {
-	struct epitem *epi, *tmp;
+	struct epitem *epi = NULL, *tmp = NULL;
 	poll_table pt;
 
 	init_poll_funcptr(&pt, NULL);
@@ -999,7 +999,7 @@ static const struct file_operations eventpoll_fops = {
 void eventpoll_release_file(struct file *file)
 {
 	struct eventpoll *ep;
-	struct epitem *epi, *next;
+	struct epitem *epi = NULL, *next = NULL;
 
 	/*
 	 * We don't want to get "file->f_lock" because it is not
@@ -1333,7 +1333,7 @@ static int reverse_path_check_proc(void *priv, void *cookie, int call_nests)
 	int error = 0;
 	struct file *file = priv;
 	struct file *child_file;
-	struct epitem *epi;
+	struct epitem *epi = NULL;
 
 	/* CTL_DEL can remove links here, but that can't increase our count */
 	rcu_read_lock();
@@ -1376,7 +1376,7 @@ static int reverse_path_check_proc(void *priv, void *cookie, int call_nests)
 static int reverse_path_check(void)
 {
 	int error = 0;
-	struct file *current_file;
+	struct file *current_file = NULL;
 
 	/* let's call this for all tfiles */
 	list_for_each_entry(current_file, &tfile_check_list, f_tfile_llink) {
@@ -1461,7 +1461,24 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 	} else {
 		RCU_INIT_POINTER(epi->ws, NULL);
 	}
+	/* CVE-2021-1048 */
 
+	/* Add the current item to the list of active epoll hook for this file */
+	spin_lock(&tfile->f_lock);
+	list_add_tail_rcu(&epi->fllink, &tfile->f_ep_links);
+	spin_unlock(&tfile->f_lock);
+
+	/*
+	 * Add the current item to the RB tree. All RB tree operations are
+	 * protected by "mtx", and ep_insert() is called with "mtx" held.
+	 */
+	ep_rbtree_insert(ep, epi);
+
+	/* now check if we've created too many backpaths */
+	error = -EINVAL;
+	if (full_check && reverse_path_check())
+		goto error_remove_epi;
+	/* CVE-2021-1048 */
 	/* Initialize the poll table using the queue callback */
 	epq.epi = epi;
 	init_poll_funcptr(&epq.pt, ep_ptable_queue_proc);
@@ -1483,22 +1500,6 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 	error = -ENOMEM;
 	if (epi->nwait < 0)
 		goto error_unregister;
-
-	/* Add the current item to the list of active epoll hook for this file */
-	spin_lock(&tfile->f_lock);
-	list_add_tail_rcu(&epi->fllink, &tfile->f_ep_links);
-	spin_unlock(&tfile->f_lock);
-
-	/*
-	 * Add the current item to the RB tree. All RB tree operations are
-	 * protected by "mtx", and ep_insert() is called with "mtx" held.
-	 */
-	ep_rbtree_insert(ep, epi);
-
-	/* now check if we've created too many backpaths */
-	error = -EINVAL;
-	if (full_check && reverse_path_check())
-		goto error_remove_epi;
 
 	/* We have to drop the new item inside our item list to keep track of it */
 	spin_lock_irqsave(&ep->lock, flags);
@@ -1527,6 +1528,10 @@ static int ep_insert(struct eventpoll *ep, struct epoll_event *event,
 		ep_poll_safewake(&ep->poll_wait);
 
 	return 0;
+/* CVE-2021-1048 */
+error_unregister:
+	ep_unregister_pollwait(ep, epi);
+/* CVE-2021-1048 */
 
 error_remove_epi:
 	spin_lock(&tfile->f_lock);
@@ -1534,9 +1539,6 @@ error_remove_epi:
 	spin_unlock(&tfile->f_lock);
 
 	rb_erase_cached(&epi->rbn, &ep->rbr);
-
-error_unregister:
-	ep_unregister_pollwait(ep, epi);
 
 	/*
 	 * We need to do this because an event could have been arrived on some
@@ -1928,7 +1930,7 @@ static int ep_loop_check_proc(void *priv, void *cookie, int call_nests)
 static int ep_loop_check(struct eventpoll *ep, struct file *file)
 {
 	int ret;
-	struct eventpoll *ep_cur, *ep_next;
+	struct eventpoll *ep_cur = NULL, *ep_next = NULL;
 
 	ret = ep_call_nested(&poll_loop_ncalls, EP_MAX_NESTS,
 			      ep_loop_check_proc, file, ep, current);

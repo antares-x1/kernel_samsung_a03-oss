@@ -826,10 +826,9 @@ int f2fs_do_add_link(struct inode *dir, const struct qstr *name,
 	 * verify on-disk dentry one more time, which guarantees filesystem
 	 * consistency more.
 	 */
-	if (current != F2FS_I(dir)->task) {
-		de = __f2fs_find_entry(dir, &fname, &page);
-		F2FS_I(dir)->task = NULL;
-	}
+
+	de = __f2fs_find_entry(dir, &fname, &page);
+
 	if (de) {
 		f2fs_put_page(page, 0);
 		err = -EEXIST;
@@ -1083,6 +1082,9 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 		goto out_free;
 	}
 
+	if (IS_I_VERSION(inode) && file->f_version != inode->i_version)
+		file->f_version = inode->i_version;
+
 	for (; n < npages; n++, ctx->pos = n * NR_DENTRY_IN_BLOCK) {
 
 		/* allow readdir() to be interrupted */
@@ -1115,6 +1117,14 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 		err = f2fs_fill_dentries(ctx, &d,
 				n * NR_DENTRY_IN_BLOCK, &fstr);
 		if (err) {
+			struct f2fs_sb_info *sbi = F2FS_P_SB(dentry_page);
+
+			if (err == -EINVAL) {
+				print_block_data(sbi->sb, n,
+					page_address(dentry_page), 0, F2FS_BLKSIZE);
+				f2fs_bug_on(sbi, 1);
+			}
+
 			f2fs_put_page(dentry_page, 0);
 			break;
 		}
