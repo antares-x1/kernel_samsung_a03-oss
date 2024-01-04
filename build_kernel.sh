@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export CROSS_COMPILE=$(pwd)/toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+export CROSS_COMPILE=$(pwd)/../toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 export ARCH=arm64
-export CLANG_TOOL_PATH=$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin/
+export CLANG_TOOL_PATH=$(pwd)/../toolchain/clang/host/linux-x86/clang-r383902/bin/
 export PATH=${CLANG_TOOL_PATH}:${PATH//"${CLANG_TOOL_PATH}:"}
 
 export BSP_BUILD_FAMILY=qogirl6
