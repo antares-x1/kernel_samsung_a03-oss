@@ -170,6 +170,22 @@ endif
 
 KBUILD_DTBS	:= dtbs
 
+BUILD_DTC_PATH = $(subst $\",,$(CONFIG_BUILD_ARM64_DTC))
+ifneq ($(BUILD_DTC_PATH),)
+	DTC = $(BUILD_DTC_PATH)
+endif
+
+BUILD_DTC_FLAGS = $(subst $\",,$(CONFIG_BUILD_ARM64_DTC_FLAGS))
+ifneq ($(BUILD_DTC_FLAGS),)
+	DTC_FLAGS += $(BUILD_DTC_FLAGS)
+endif
+
+#HS03 code for SR-SL6215-01-450 by wanghshanzhi at 2021/08/08 start
+SPRD_PLATFORM := $(CONFIG_SPRD_PLATFORM:"%"=%)
+SPRD_PROJECT := $(CONFIG_ARCH_SPRD_PROJECT:"%"=%)
+export SPRD_PLATFORM SPRD_PROJECT
+#HS03 code for SR-SL6215-01-450 by wanghshanzhi at 2021/08/08 end
+
 all:	Image.gz $(KBUILD_DTBS) $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME))
 
 
