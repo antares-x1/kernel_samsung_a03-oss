@@ -126,6 +126,9 @@ struct usb_phy {
 	int	(*init)(struct usb_phy *x);
 	void	(*shutdown)(struct usb_phy *x);
 
+	/* do additional settings after complete initialization */
+	int	(*post_init)(struct usb_phy *x);
+
 	/* enable/disable VBUS */
 	int	(*set_vbus)(struct usb_phy *x, int on);
 
@@ -155,6 +158,22 @@ struct usb_phy {
 	 * manually detect the charger type.
 	 */
 	enum usb_charger_type (*charger_detect)(struct usb_phy *x);
+	/*
+	 * Charger re-detection method can be implemented if you need to
+	 * manually detect the charger type.
+	 */
+	enum usb_charger_type (*retry_charger_detect)(struct usb_phy *x);
+
+	/*
+	 * true : dpdm switch to usb phy
+	 * false: dpdm can controlled by pmic
+	 */
+	void	(*dpdm_switch_to_phy)(struct usb_phy *x, bool enable);
+
+	/* reset the PHY */
+	int	(*reset_phy)(struct usb_phy *x);
+
+	void	(*set_emphasis)(struct usb_phy *x, bool enabled);
 };
 
 /**
@@ -204,6 +223,16 @@ usb_phy_init(struct usb_phy *x)
 	return 0;
 }
 
+
+static inline int
+usb_phy_post_init(struct usb_phy *x)
+{
+	if (x && x->post_init)
+		return x->post_init(x);
+
+	return 0;
+}
+
 static inline void
 usb_phy_shutdown(struct usb_phy *x)
 {
@@ -227,6 +256,22 @@ usb_phy_vbus_off(struct usb_phy *x)
 		return 0;
 
 	return x->set_vbus(x, false);
+}
+
+static inline int usb_phy_reset(struct usb_phy *x)
+{
+	if (!x || !x->reset_phy)
+		return 0;
+
+	return x->reset_phy(x);
+}
+
+static inline void usb_phy_emphasis_set(struct usb_phy *x, bool enabled)
+{
+	if (!x || !x->set_emphasis)
+		return;
+
+	x->set_emphasis(x, enabled);
 }
 
 /* for usb host and peripheral controller drivers */

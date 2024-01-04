@@ -187,6 +187,11 @@ struct input_dev {
 	struct input_value *vals;
 
 	bool devres_managed;
+	/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 start*/
+	unsigned int users_private;
+	bool disabled;
+	bool lowpower_mode;
+	/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 end*/
 };
 #define to_input_dev(d) container_of(d, struct input_dev, dev)
 

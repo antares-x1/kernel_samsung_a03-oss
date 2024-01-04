@@ -337,6 +337,8 @@
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
+#define KEY_RECENT   		254
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -360,7 +362,9 @@
 #define BTN_FORWARD		0x115
 #define BTN_BACK		0x116
 #define BTN_TASK		0x117
-
+/*Tab A8 code for SR-AX6300-01-131 by chenpengbo at 2021/09/22 start*/
+#define BTN_PALM     		0x118
+/*Tab A8 code for SR-AX6300-01-131 by chenpengbo at 2021/09/22 end*/
 #define BTN_JOYSTICK		0x120
 #define BTN_TRIGGER		0x120
 #define BTN_THUMB		0x121
@@ -396,6 +400,7 @@
 #define BTN_MODE		0x13c
 #define BTN_THUMBL		0x13d
 #define BTN_THUMBR		0x13e
+#define BTN_GAME		0x13f
 
 #define BTN_DIGI		0x140
 #define BTN_TOOL_PEN		0x140
@@ -687,6 +692,34 @@
 #define BTN_TRIGGER_HAPPY39		0x2e6
 #define BTN_TRIGGER_HAPPY40		0x2e7
 
+#define KEY_DEX_ON				0x2bd
+#define BTN_HOTKEY_APP1 		0x2f5
+#define BTN_HOTKEY_APP2 		0x2f6
+#define BTN_HOTKEY_APP3 		0x2f7
+
+/*Tab A8 code for SR-AX6300-01-133 by xiongxiaoliang at 2021/08/10 start*/
+#ifdef HQ_FACTORY_BUILD
+/* for right-up sar */
+#define KEY_SAR1_CLOSE          0x279
+#define KEY_SAR1_FAR            0x27a
+
+/* for right-mid sar */
+#define KEY_SAR2_CLOSE          0x27b
+#define KEY_SAR2_FAR            0x27c
+
+/* for right-down sar */
+#define KEY_SAR3_CLOSE          0x27d
+#define KEY_SAR3_FAR            0x27e
+#endif
+/*Tab A8 code for SR-AX6300-01-133 by xiongxiaoliang at 2021/08/10 end*/
+/*Tab A8 code for AX6300DEV-58 by xiongxiaoliang at 2021/08/19 start*/
+#ifdef HQ_FACTORY_BUILD
+/* for hall sensor */
+#define KEY_HALL_CLOSE          0x280
+#define KEY_HALL_FAR            0x281
+#endif
+/*Tab A8 code for AX6300DEV-58 by xiongxiaoliang at 2021/08/19 end*/
+
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE
 #define KEY_MAX			0x2ff
@@ -766,6 +799,9 @@
 #define ABS_MT_DISTANCE		0x3b	/* Contact hover distance */
 #define ABS_MT_TOOL_X		0x3c	/* Center X tool position */
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
+/*HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 start*/
+#define ABS_MT_CUSTOM           0x3e    /* Custom event */
+/*HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 end*/
 
 
 #define ABS_MAX			0x3f
@@ -794,7 +830,14 @@
 #define SW_MUTE_DEVICE		0x0e  /* set = device disabled */
 #define SW_PEN_INSERTED		0x0f  /* set = pen inserted */
 #define SW_MACHINE_COVER	0x10  /* set = cover closed */
-#define SW_MAX			0x10
+/*Tab A8 code for AX6300DEV-613 by mayuhang at 2021/9/18 start*/
+#define SW_UNUSE1		0x11
+#define SW_UNUSE2		0x12
+#define SW_UNUSE3		0x13
+#define SW_UNUSE4		0x14
+#define SW_FLIP			0x15
+#define SW_MAX			0x15
+/*Tab A8 code for AX6300DEV-613 by mayuhang at 2021/9/18 end*/
 #define SW_CNT			(SW_MAX+1)
 
 /*

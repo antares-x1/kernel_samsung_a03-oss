@@ -19,6 +19,11 @@ enum usb_charger_type {
 	DCP_TYPE = 2,
 	CDP_TYPE = 3,
 	ACA_TYPE = 4,
+	/* HS03 code for SR-SL6215-01-545 by shixuanxuan at 20210818 start */
+	#if !defined(HQ_FACTORY_BUILD)
+	FLOAT_TYPE = 5,
+	#endif
+	/* HS03 code forSR-SL6215-01-545 by shixuanxuan at 20210818 end */
 };
 
 /* USB charger state */

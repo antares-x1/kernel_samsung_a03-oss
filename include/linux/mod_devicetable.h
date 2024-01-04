@@ -293,7 +293,9 @@ struct pcmcia_device_id {
 #define INPUT_DEVICE_ID_LED_MAX		0x0f
 #define INPUT_DEVICE_ID_SND_MAX		0x07
 #define INPUT_DEVICE_ID_FF_MAX		0x7f
-#define INPUT_DEVICE_ID_SW_MAX		0x10
+/*Tab A8 code for AX6300DEV-613 by mayuhang at 2021/9/18 start*/
+#define INPUT_DEVICE_ID_SW_MAX		0x15
+/*Tab A8 code for AX6300DEV-613 by mayuhang at 2021/9/18 end*/
 #define INPUT_DEVICE_ID_PROP_MAX	0x1f
 
 #define INPUT_DEVICE_ID_MATCH_BUS	1
@@ -693,5 +695,20 @@ struct fsl_mc_device_id {
 	const char obj_type[16];
 };
 
+
+/* USB Type-C Alternate Modes */
+
+#define TYPEC_ANY_MODE	0x7
+
+/**
+ * struct typec_device_id - USB Type-C alternate mode identifiers
+ * @svid: Standard or Vendor ID
+ * @mode: Mode index
+ */
+struct typec_device_id {
+	__u16 svid;
+	__u8 mode;
+	kernel_ulong_t driver_data;
+};
 
 #endif /* LINUX_MOD_DEVICETABLE_H */
