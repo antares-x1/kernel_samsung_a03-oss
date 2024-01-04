@@ -380,6 +380,7 @@ NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
+DTC            	= scripts/dtc/dtc
 AWK		= awk
 GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
@@ -416,7 +417,7 @@ LINUXINCLUDE    := \
 		$(USERINCLUDE)
 
 KBUILD_AFLAGS   := -D__ASSEMBLY__
-KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
+KBUILD_CFLAGS   := -Wall -Werror -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common -fshort-wchar \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
@@ -431,11 +432,11 @@ GCC_PLUGINS_CFLAGS :=
 CLANG_FLAGS :=
 
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC
-export CPP AR NM STRIP OBJCOPY OBJDUMP HOSTLDFLAGS HOST_LOADLIBES
+export CPP AR NM STRIP OBJCOPY OBJDUMP HOSTLDFLAGS HOST_LOADLIBES DTC
 export MAKE AWK GENKSYMS INSTALLKERNEL PERL PYTHON UTS_MACHINE
 export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODULE CHECK CHECKFLAGS
 
-export KBUILD_CPPFLAGS NOSTDINC_FLAGS LINUXINCLUDE OBJCOPYFLAGS LDFLAGS
+export KBUILD_CPPFLAGS NOSTDINC_FLAGS LINUXINCLUDE OBJCOPYFLAGS LDFLAGS DTC_FLAGS
 export KBUILD_CFLAGS CFLAGS_KERNEL CFLAGS_MODULE
 export CFLAGS_KASAN CFLAGS_KASAN_NOSANITIZE CFLAGS_UBSAN
 export KBUILD_AFLAGS AFLAGS_KERNEL AFLAGS_MODULE
@@ -670,6 +671,18 @@ ARCH_CPPFLAGS :=
 ARCH_AFLAGS :=
 ARCH_CFLAGS :=
 include arch/$(SRCARCH)/Makefile
+
+SPRD_MARCH_FLAG = $(patsubst "%",%,$(CONFIG_SPRD_CPU_ARCH))
+ifneq ($(SPRD_MARCH_FLAG),)
+ARCH_AFLAGS   += $(call cc-option, -march=$(SPRD_MARCH_FLAG))
+ARCH_CFLAGS   += $(call cc-option, -march=$(SPRD_MARCH_FLAG))
+endif
+
+SPRD_MCPU_FLAG = $(patsubst "%",%,$(CONFIG_SPRD_CPU_TYPE))
+ifneq ($(SPRD_MCPU_FLAG),)
+ARCH_AFLAGS   += $(call cc-option, -mcpu=$(SPRD_MCPU_FLAG))
+ARCH_CFLAGS   += $(call cc-option, -mcpu=$(SPRD_MCPU_FLAG))
+endif
 
 KBUILD_CFLAGS	+= $(call cc-option,-fno-delete-null-pointer-checks,)
 KBUILD_CFLAGS	+= $(call cc-disable-warning,frame-address,)
@@ -970,6 +983,27 @@ include scripts/Makefile.kasan
 include scripts/Makefile.extrawarn
 include scripts/Makefile.ubsan
 
+# HS03 code for SR-AX6300-01-114 by Wangshanzhi at 20210803 start
+ifeq ($(HQ_FACTORY_BUILD),true)
+KBUILD_CPPFLAGS += -DHQ_FACTORY_BUILD
+KBUILD_CFLAGS += -DHQ_FACTORY_BUILD
+endif
+# HS03 code for SR-AX6300-01-114 by Wangshanzhi at 20210803 end
+
+# HS03 code for P211016-02151 by yubaiwen at 20211020 start
+ifeq ($(HUAQIN_BUILD),true)
+KBUILD_CPPFLAGS += -DHUAQIN_BUILD
+KBUILD_CFLAGS += -DHUAQIN_BUILD
+endif
+# HS03 code for P211016-02151 by yubaiwen at 20211020 end
+
+# HS03 code for SR-SL6215-01-442 by Wangshanzhi at 20210809 start
+ifeq ($(HQ_D85_BUILD),true)
+KBUILD_CPPFLAGS += -DHQ_D85_BUILD
+KBUILD_CFLAGS += -DHQ_D85_BUILD
+endif
+# HS03 code for SR-SL6215-01-442 by Wangshanzhi at 20210809 end
+
 # Add any arch overrides and user supplied CPPFLAGS, AFLAGS and CFLAGS as the
 # last assignments
 KBUILD_CPPFLAGS += $(ARCH_CPPFLAGS) $(KCPPFLAGS)
@@ -1092,7 +1126,7 @@ endif
 PHONY += prepare0
 
 ifeq ($(KBUILD_EXTMOD),)
-core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/
+core-y		+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/ test/
 
 vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
@@ -1297,6 +1331,17 @@ endif
 ifdef cfi-flags
   ifeq ($(call cc-option, $(cfi-flags)),)
 	@echo Cannot use CONFIG_CFI: $(cfi-flags) not supported by compiler >&2 && exit 1
+  endif
+endif
+# Warn when invalid -march or -mcpu flags are used
+ifneq ($(SPRD_MARCH_FLAG),)
+  ifeq ($(call cc-option, -march=$(SPRD_MARCH_FLAG)),)
+	@echo Cannot apply CONFIG_SPRD_CPU_ARCH: -march=$(SPRD_MARCH_FLAG) not supported by compiler >&2
+  endif
+endif
+ifneq ($(SPRD_MCPU_FLAG),)
+  ifeq ($(call cc-option, -mcpu=$(SPRD_MCPU_FLAG)),)
+	@echo Cannot apply CONFIG_SPRD_CPU_TYPE: -mcpu=$(SPRD_MCPU_FLAG) not supported by compiler >&2
   endif
 endif
 	@:
