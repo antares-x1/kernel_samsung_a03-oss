@@ -30,7 +30,10 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/spinlock.h>
-
+/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 start*/
+#include <linux/input.h>
+#include <linux/sec_class.h>
+/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 end*/
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
 	struct input_dev *input;
@@ -58,6 +61,48 @@ struct gpio_keys_drvdata {
 	unsigned short *keymap;
 	struct gpio_button_data data[0];
 };
+
+/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 start*/
+struct device *sec_key;
+
+static int key_power_state = 0;
+static int key_valuedown_state = 0;
+static int key_valueup_state = 0;
+
+void key_code_state(int keycode,int state){
+	switch (keycode)
+	{
+	case KEY_POWER:
+		key_power_state = state;
+		break;
+	case KEY_VOLUMEUP:
+		key_valueup_state = state;
+		break;
+	case KEY_VOLUMEDOWN:
+		key_valuedown_state = state;
+		break;
+	default:
+		break;
+	}
+}
+
+static ssize_t keycode_pressed_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+        return snprintf(buf, PAGE_SIZE, "%d:%d,%d:%d,%d:%d\n",KEY_POWER,
+			key_power_state,KEY_VOLUMEDOWN,key_valuedown_state,KEY_VOLUMEUP,key_valueup_state);
+}
+static DEVICE_ATTR(keycode_pressed, 0444, keycode_pressed_show, NULL);
+
+static struct attribute *sec_key_attrs[] = {
+        &dev_attr_keycode_pressed.attr,
+        NULL,
+};
+
+static struct attribute_group sec_key_attr_group = {
+        .attrs = sec_key_attrs,
+};
+/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 end*/
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -376,6 +421,9 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			input_event(input, type, button->code, button->value);
 	} else {
 		input_event(input, type, *bdata->code, state);
+		/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 start*/
+		key_code_state(button->code, state);
+		/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 end*/
 	}
 	input_sync(input);
 }
@@ -843,6 +891,17 @@ static int gpio_keys_probe(struct platform_device *pdev)
 
 	device_init_wakeup(dev, wakeup);
 
+	/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 start*/
+	sec_key = sec_device_create(NULL, "sec_key");
+	if (IS_ERR(sec_key))
+			dev_err(dev, "Failed to create device(sec_key)!\n");
+	error = sysfs_create_group(&sec_key->kobj, &sec_key_attr_group);
+	if (error) {
+			dev_err(dev, "Unable to create sysfs_group, error: %d\n",
+					error);
+	}
+	dev_set_drvdata(sec_key, ddata);
+	/*HS03 code for SR-SL6215-01-566  by LiShuai at 20210828 end*/
 	return 0;
 }
 

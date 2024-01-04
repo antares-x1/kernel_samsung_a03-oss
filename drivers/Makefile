@@ -128,6 +128,7 @@ obj-$(CONFIG_ISDN)		+= isdn/
 obj-$(CONFIG_EDAC)		+= edac/
 obj-$(CONFIG_EISA)		+= eisa/
 obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
+obj-$(CONFIG_SPRD_CPU_HOTPLUG_GOV)     += cpuhotplug/
 obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
 obj-y				+= mmc/
 obj-$(CONFIG_MEMSTICK)		+= memstick/
@@ -183,4 +184,13 @@ obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_FSI)		+= fsi/
 obj-$(CONFIG_TEE)		+= tee/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
+obj-$(CONFIG_TRUSTY)      	+= trusty/
 obj-$(CONFIG_GNSS)		+= gnss/
+
+# HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 start
+obj-y   += samsung/
+# HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 end
+
+# Tab A8 code for SR-AX6300-01-5 by wenyaqi at 20210824 start
+obj-$(CONFIG_AFC)		+= afc/
+# Tab A8 code for SR-AX6300-01-5 by wenyaqi at 20210824 end

@@ -17,9 +17,18 @@
 #include <linux/mmc/slot-gpio.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/fs.h>
+#include <linux/notifier.h>
 
 #include "slot-gpio.h"
 
+#define SDCARD_INSERT_EVENT 0x1U
+extern int call_sar_notifiers(unsigned long val, void *v);
+/*Tab A8 code for AX6300DEV-1840 by mayuhang at 2021/10/21 start*/
+#ifdef CONFIG_TARGET_UMS512_1H10
+extern struct raw_notifier_head sdcard_hx9031_notify;
+#endif
+/*Tab A8 code for AX6300DEV-1840 by mayuhang at 2021/10/21 end*/
 struct mmc_gpio {
 	struct gpio_desc *ro_gpio;
 	struct gpio_desc *cd_gpio;
@@ -30,6 +39,7 @@ struct mmc_gpio {
 	char cd_label[0];
 };
 
+/* HS03  code for SL6216DEV-166 by shibinbin at 2021/10/14 start */
 static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
@@ -37,9 +47,19 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 
 	host->trigger_card_event = true;
 	mmc_detect_change(host, msecs_to_jiffies(200));
-
+/* Tab A7 Lite T618 code for AX6189DEV-85 by zhangziyi at 2022/01/12 start */
+#if (defined(CONFIG_TARGET_UMS9230_4H10) || defined(CONFIG_TARGET_UMS512_25C10))
+	call_sar_notifiers(SDCARD_INSERT_EVENT, "no_use");
+#endif
+/* Tab A7 Lite T618 code for AX6189DEV-85 by zhangziyi at 2022/01/12 end */
+/*Tab A8 code for AX6300DEV-1840 by mayuhang at 2021/10/21 start*/
+#ifdef CONFIG_TARGET_UMS512_1H10
+	raw_notifier_call_chain(&sdcard_hx9031_notify, SDCARD_INSERT_EVENT, NULL);
+#endif
+/*Tab A8 code for AX6300DEV-1840 by mayuhang at 2021/10/21 end*/
 	return IRQ_HANDLED;
 }
+/* HS03  code for SL6216DEV-166 by shibinbin at 2021/10/14 end */
 
 int mmc_gpio_alloc(struct mmc_host *host)
 {

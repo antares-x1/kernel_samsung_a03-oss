@@ -506,6 +506,11 @@ config PCI_ENDPOINT_TEST
            Enable this configuration option to enable the host side test driver
            for PCI Endpoint.
 
+config SPRD_UID
+	tristate "Spreadtrum Uid Support"
+        help
+          provoid a driver to get chip uid.
+
 config UID_SYS_STATS
 	bool "Per-UID statistics"
 	depends on PROFILING && TASK_XACCT && TASK_IO_ACCOUNTING
@@ -527,6 +532,11 @@ config MEMORY_STATE_TIME
 	help
 	  Memory time statistics exported to /sys/kernel/memory_state_time
 
+config SPRD_SOCID
+	tristate "Spreadtrum soc id Support"
+	help
+	  provoid a driver to get soc id.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -539,4 +549,35 @@ source "drivers/misc/mic/Kconfig"
 source "drivers/misc/genwqe/Kconfig"
 source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
+source "drivers/misc/sprd_vsp/Kconfig"
+source "drivers/misc/sprd_vpu/Kconfig"
+source "drivers/misc/sprd_jpg/Kconfig"
+source "drivers/misc/sprdwcn/Kconfig"
+source "drivers/misc/sprd_wcn_n6pro/Kconfig"
+source "drivers/misc/sprd_audio/Kconfig"
+source "drivers/misc/sprd_apdu/Kconfig"
+# HS03 code for SR-SL6215-01-233 by sunxunou at 2021/08/02 start
+source "drivers/misc/huaqin/Kconfig"
+# HS03 code for SR-SL6215-01-233 by sunxunou at 2021/08/02 end
+# Tab A8 code for SR-AX6300-01-78 by xiongxiaoliang at 2021/08/09 start
+source "drivers/misc/sar/sx933x/Kconfig"
+# Tab A8 code for SR-AX6300-01-78 by xiongxiaoliang at 2021/08/09 end
+# Tab A8 code for SR-AX6300-01-87 by xiongxiaoliang at 2021/08/12 start
+source "drivers/misc/hall/Kconfig"
+# Tab A8 code for SR-AX6300-01-87 by xiongxiaoliang at 2021/08/12 end
+# HS03 code for SR-SL6215-01-165 by shibinbin at 2021/08/09 start
+source "drivers/misc/hs03_sar/Kconfig"
+# HS03 code for SR-SL6215-01-165 by shibinbin at 2021/08/09 end
+# Tab A8 code for SR-AX6300-01-207 by wangdeyan at 20210812 start */
+source "drivers/misc/grdm/Kconfig"
+# Tab A8 code for SR-AX6300-01-207 by wangdeyan at 20210812 end */
+#Tab A8 code for SR-AX6300-01-81 by mayuhang at 2021/8/12 start
+source "drivers/misc/sar/hx9031/Kconfig"
+#Tab A8 code for SR-AX6300-01-81 by mayuhang at 2021/8/12 end
+# HS03 code for P211007-03235 by zhangziyi at 2021/10/11 start
+source "drivers/misc/vibrator/Kconfig"
+# HS03 code for P211007-03235 by zhangziyi at 2021/10/11 end
+# Tab A7 T618 code for SR-AX6189A-01-178 by zhangziyi at 2021/12/19 start
+source "drivers/misc/aw96103A_sar/Kconfig"
+# Tab A7 T618 code for SR-AX6189A-01-178 by zhangziyi at 2021/12/19 end
 endmenu

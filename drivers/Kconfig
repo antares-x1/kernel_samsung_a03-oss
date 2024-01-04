@@ -209,8 +209,19 @@ source "drivers/fpga/Kconfig"
 
 source "drivers/fsi/Kconfig"
 
+source "drivers/cpuhotplug/Kconfig"
+
 source "drivers/tee/Kconfig"
 
 source "drivers/mux/Kconfig"
 
+source "drivers/trusty/Kconfig"
+
+# HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 start
+source "drivers/samsung/Kconfig"
+# HS03 code for SR-SL6215-01-102 by zhoulingyun at 20210730 end
+
+# Tab A8 code for SR-AX6300-01-5 by wenyaqi at 20210824 start
+source "drivers/afc/Kconfig"
+# Tab A8 code for SR-AX6300-01-5 by wenyaqi at 20210824 end
 endmenu

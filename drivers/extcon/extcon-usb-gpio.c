@@ -85,12 +85,10 @@ static void usb_extcon_detect_cable(struct work_struct *work)
 	if (!vbus)
 		extcon_set_state_sync(info->edev, EXTCON_USB, false);
 
-	if (!id) {
+	if (!id)
 		extcon_set_state_sync(info->edev, EXTCON_USB_HOST, true);
-	} else {
-		if (vbus)
-			extcon_set_state_sync(info->edev, EXTCON_USB, true);
-	}
+	if (vbus)
+		extcon_set_state_sync(info->edev, EXTCON_USB, true);
 }
 
 static irqreturn_t usb_irq_handler(int irq, void *dev_id)

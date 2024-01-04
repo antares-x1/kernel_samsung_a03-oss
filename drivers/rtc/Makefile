@@ -144,6 +144,8 @@ obj-$(CONFIG_RTC_DRV_S35390A)	+= rtc-s35390a.o
 obj-$(CONFIG_RTC_DRV_S3C)	+= rtc-s3c.o
 obj-$(CONFIG_RTC_DRV_S5M)	+= rtc-s5m.o
 obj-$(CONFIG_RTC_DRV_SA1100)	+= rtc-sa1100.o
+obj-$(CONFIG_RTC_DRV_SC27XX)	+= rtc-sc27xx.o
+GCOV_PROFILE_rtc-sc27xx.o	:= ${CONFIG_SPRD_RTC_DRV_SC27XX_GCOV}
 obj-$(CONFIG_RTC_DRV_SH)	+= rtc-sh.o
 obj-$(CONFIG_RTC_DRV_SIRFSOC)	+= rtc-sirfsoc.o
 obj-$(CONFIG_RTC_DRV_SNVS)	+= rtc-snvs.o
@@ -173,3 +175,6 @@ obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
 obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
 obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
 obj-$(CONFIG_RTC_DRV_GOLDFISH)	+= rtc-goldfish.o
+# Tab A8 code for SR-AX6300-01-433 by wenyaqi at 20211108 start
+obj-$(CONFIG_RTC_PWRON_ALARM)	+= power-on-alarm.o
+# Tab A8 code for SR-AX6300-01-433 by wenyaqi at 20211108 end

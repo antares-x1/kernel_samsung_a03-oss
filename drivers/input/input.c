@@ -28,6 +28,11 @@
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
 #include "input-compat.h"
+/* HS03 code for SL6215DEV-100 by yuanliding at 20210813 start */
+#include <linux/touchscreen_info.h>
+
+enum tp_module_used tp_is_used = UNKNOWN_TP;
+/* HS03 code for SL6215DEV-100 by yuanliding at 20210813 end */
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
 MODULE_DESCRIPTION("Input core");
@@ -245,7 +250,8 @@ static int input_handle_abs_event(struct input_dev *dev,
 	if (pold) {
 		*pval = input_defuzz_abs_event(*pval, *pold,
 						dev->absinfo[code].fuzz);
-		if (*pold == *pval)
+		/* set flat less than 0 to indicate not return INPUT_IGNORE_EVENT */
+		if (dev->absinfo[code].flat >= 0 && *pold == *pval)
 			return INPUT_IGNORE_EVENT;
 
 		*pold = *pval;
@@ -674,6 +680,45 @@ void input_close_device(struct input_handle *handle)
 	mutex_unlock(&dev->mutex);
 }
 EXPORT_SYMBOL(input_close_device);
+
+/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 start*/
+static int input_enable_device(struct input_dev *dev)
+{
+	int retval;
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+	if (!dev->disabled)
+		goto out;
+	if (dev->open) {
+		retval = dev->open(dev);
+		if (retval)
+			goto out;
+	}
+	dev->disabled = false;
+
+out:
+	mutex_unlock(&dev->mutex);
+
+	return retval;
+}
+
+static int input_disable_device(struct input_dev *dev)
+{
+	int retval;
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+	if (!dev->disabled) {
+		dev->disabled = true;
+		if (dev->close){
+			dev->close(dev);
+		}
+	}
+	mutex_unlock(&dev->mutex);
+	return 0;
+}
+/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 end*/
 
 /*
  * Simulate keyup events for all keys that are marked as pressed.
@@ -1397,14 +1442,74 @@ static ssize_t input_dev_show_properties(struct device *dev,
 }
 static DEVICE_ATTR(properties, S_IRUGO, input_dev_show_properties, NULL);
 
+/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 start*/
+static ssize_t input_dev_show_enabled(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct input_dev *input_dev = to_input_dev(dev);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !input_dev->disabled);
+}
+
+static void configure_pinctrl(struct device *dev, bool enable)
+{
+	struct pinctrl_state *state;
+	struct pinctrl *p;
+	int ret;
+
+	p = dev->pins->p;
+	if (enable)
+		state = pinctrl_lookup_state(p, PINCTRL_STATE_IDLE);
+	else
+		state = pinctrl_lookup_state(p, PINCTRL_STATE_SLEEP);
+
+	if (!IS_ERR(state)) {
+		ret = pinctrl_select_state(p, state);
+		if (ret)
+			dev_err(dev, "failed to activate pinctrl state\n");
+	}
+}
+
+static ssize_t input_dev_store_enabled(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t size)
+{
+	int ret;
+	bool enable;
+	struct input_dev *input_dev = to_input_dev(dev);
+	struct device *parent_dev = input_dev->dev.parent;
+
+	pr_info("mms input_dev_store_enabled\n");
+	ret = strtobool(buf, &enable);
+	if (ret)
+		return ret;
+
+	if (enable)
+		ret = input_enable_device(input_dev);
+	else
+		ret = input_disable_device(input_dev);
+
+	if (ret)
+		return ret;
+	if (parent_dev && parent_dev->pins && !input_dev->lowpower_mode)
+		configure_pinctrl(parent_dev, enable);
+
+	return size;
+}
+
+static DEVICE_ATTR(enabled, S_IRUGO | S_IWUSR,
+		   input_dev_show_enabled, input_dev_store_enabled);
+
 static struct attribute *input_dev_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_phys.attr,
 	&dev_attr_uniq.attr,
 	&dev_attr_modalias.attr,
 	&dev_attr_properties.attr,
+	&dev_attr_enabled.attr,
 	NULL
 };
+/*#Tab A8 code for SR-AX6300-01-128 by chenpengbo at 2021/08/23 end*/
 
 static const struct attribute_group input_dev_attr_group = {
 	.attrs	= input_dev_attrs,

@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0
 subdir-ccflags-$(CONFIG_POWER_SUPPLY_DEBUG) := -DDEBUG
 
+#GCOV_PROFILE := $(CONFIG_SPRD_SUPPLY_GCOV)
+
+# HS03 code for SR-SL6215-01-181 by gaochao at 20210724 start
+obj-$(CONFIG_BATTERY_ID_VIA_ADC) += battery_id_via_adc.o
+# HS03 code for SR-SL6215-01-181 by gaochao at 20210724 end
+
 power_supply-y				:= power_supply_core.o
 power_supply-$(CONFIG_SYSFS)		+= power_supply_sysfs.o
 power_supply-$(CONFIG_LEDS_TRIGGERS)	+= power_supply_leds.o
@@ -64,7 +70,8 @@ obj-$(CONFIG_CHARGER_TWL4030)	+= twl4030_charger.o
 obj-$(CONFIG_CHARGER_LP8727)	+= lp8727_charger.o
 obj-$(CONFIG_CHARGER_LP8788)	+= lp8788-charger.o
 obj-$(CONFIG_CHARGER_GPIO)	+= gpio-charger.o
-obj-$(CONFIG_CHARGER_MANAGER)	+= charger-manager.o
+obj-$(CONFIG_CHARGER_MANAGER)	+= charger-manager.o sprd_vote.o
+GCOV_PROFILE_charger-manager.o := $(CONFIG_SPRD_SUPPLY_GCOV)
 obj-$(CONFIG_CHARGER_LTC3651)	+= ltc3651-charger.o
 obj-$(CONFIG_CHARGER_MAX14577)	+= max14577_charger.o
 obj-$(CONFIG_CHARGER_DETECTOR_MAX14656)	+= max14656_charger_detector.o
@@ -73,6 +80,7 @@ obj-$(CONFIG_CHARGER_MAX8997)	+= max8997_charger.o
 obj-$(CONFIG_CHARGER_MAX8998)	+= max8998_charger.o
 obj-$(CONFIG_CHARGER_QCOM_SMBB)	+= qcom_smbb.o
 obj-$(CONFIG_CHARGER_BQ2415X)	+= bq2415x_charger.o
+obj-$(CONFIG_CHARGER_AW32257)	+= aw32257_charger.o
 obj-$(CONFIG_CHARGER_BQ24190)	+= bq24190_charger.o
 obj-$(CONFIG_CHARGER_BQ24257)	+= bq24257_charger.o
 obj-$(CONFIG_CHARGER_BQ24735)	+= bq24735-charger.o
@@ -82,3 +90,39 @@ obj-$(CONFIG_CHARGER_TPS65090)	+= tps65090-charger.o
 obj-$(CONFIG_CHARGER_TPS65217)	+= tps65217_charger.o
 obj-$(CONFIG_AXP288_FUEL_GAUGE) += axp288_fuel_gauge.o
 obj-$(CONFIG_AXP288_CHARGER)	+= axp288_charger.o
+obj-$(CONFIG_CHARGER_CROS_USBPD)	+= cros_usbpd-charger.o
+obj-$(CONFIG_CHARGER_SC2731)	+= sc2731_charger.o
+obj-$(CONFIG_FUEL_GAUGE_SC27XX)	+= sc27xx_fuel_gauge.o
+GCOV_PROFILE_sc27xx_fuel_gauge.o := $(CONFIG_SPRD_SUPPLY_GCOV)
+obj-$(CONFIG_CHARGER_SC2703)	+= sc2703-charger.o
+GCOV_PROFILE_sc2703-charger.o := $(CONFIG_SPRD_SUPPLY_GCOV)
+obj-$(CONFIG_CHARGER_FAN54015)	+= fan54015-charger.o
+GCOV_PROFILE_fan54015-charger.o := $(CONFIG_SPRD_SUPPLY_GCOV)
+obj-$(CONFIG_CHARGER_ETA6937)	+= eta6937-charger.o
+GCOV_PROFILE_eta6937-charger.o := $(CONFIG_SPRD_SUPPLY_GCOV)
+obj-$(CONFIG_CHARGER_BQ2560X)	+= bq2560x-charger.o
+# HS03 code for SR-SL6215-01-178 by gaochao at 20210724 start
+obj-$(CONFIG_CHARGER_SGM41511)	+= sgm41511-charger.o
+# HS03 code for SR-SL6215-01-178 by gaochao at 20210724 end
+# HS03 code for SL6215DEV-4004 by lina at 20220119 start
+obj-$(CONFIG_CHARGER_SGM41513)	+= sgm41513-charger.o
+# HS03 code for SL6215DEV-4004 by lina at 20220119 end
+obj-$(CONFIG_CHARGER_BQ25890)	+= bq25890_charger.o
+# Tab A8 code for AX6300DEV-11 by wenyaqi at 20210730 start
+obj-$(CONFIG_CHARGER_SGM4154X)	+= sgm4154x_charger.o
+obj-$(CONFIG_CHARGER_SY6970)	+= sy6970_charger.o
+# Tab A8 code for AX6300DEV-11 by wenyaqi at 20210730 end
+# Tab A7 Lite T618 code for SR-AX6189A-01-103 by shixuanxuan at 20220105 start
+obj-$(CONFIG_CHARGER_SC89890H) += sc89890h_charger.o
+# Tab A7 Lite T618 code for SR-AX6189A-01-103 by shixuanxuan at 20220105 end
+obj-$(CONFIG_CHARGER_BQ2597X)	+= bq2597x-charger.o
+obj-$(CONFIG_CHARGER_SC2720)	+= sc2720_charger.o
+obj-$(CONFIG_CHARGER_SC2721)	+= sc2721_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_NU1619)	+= nu1619_wireless_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_SY65153)	+= sy65153_wireless_charger.o
+obj-$(CONFIG_WIRELESS_CHARGE_PUMPS_CONVERTER_HL1506)	+= hl1506_charger.o
+obj-$(CONFIG_FAST_CHARGER_SC2730) += sc2730_fast_charger.o
+obj-$(CONFIG_CHARGER_BQ25910) += bq25910_charger.o
+# HS03 code for SR-SL6215-01-177 by jiahao at 20210810 start
+obj-$(CONFIG_CHARGER_RT9471)	+= rt9471_charger.o
+# HS03 code for SR-SL6215-01-177 by jiahao at 20210810 end
