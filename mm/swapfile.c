@@ -935,9 +935,13 @@ int get_swap_pages(int n_goal, bool cluster, swp_entry_t swp_entries[])
 	/* Only single cluster request supported */
 	WARN_ON_ONCE(n_goal > 1 && cluster);
 
+	spin_lock(&swap_avail_lock);
+
 	avail_pgs = atomic_long_read(&nr_swap_pages) / nr_pages;
-	if (avail_pgs <= 0)
+	if (avail_pgs <= 0) {
+		spin_unlock(&swap_avail_lock);
 		goto noswap;
+	}
 
 	if (n_goal > SWAP_BATCH)
 		n_goal = SWAP_BATCH;
@@ -947,7 +951,6 @@ int get_swap_pages(int n_goal, bool cluster, swp_entry_t swp_entries[])
 
 	atomic_long_sub(n_goal * nr_pages, &nr_swap_pages);
 
-	spin_lock(&swap_avail_lock);
 
 start_over:
 	node = numa_node_id();
@@ -1020,14 +1023,13 @@ swp_entry_t get_swap_page_of_type(int type)
 	si = swap_info[type];
 	spin_lock(&si->lock);
 	if (si && (si->flags & SWP_WRITEOK)) {
-		atomic_long_dec(&nr_swap_pages);
 		/* This is called for allocating swap entry, not cache */
 		offset = scan_swap_map(si, 1);
 		if (offset) {
+			atomic_long_dec(&nr_swap_pages);
 			spin_unlock(&si->lock);
 			return swp_entry(type, offset);
 		}
-		atomic_long_inc(&nr_swap_pages);
 	}
 	spin_unlock(&si->lock);
 	return (swp_entry_t) {0};
@@ -3736,6 +3738,55 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 	}
 }
 
+unsigned long get_swap_orig_data_nrpages(void)
+{
+	unsigned long x = 0;
+#if IS_ENABLED(CONFIG_ZSMALLOC)
+	struct sysinfo i;
+
+	si_swapinfo(&i);
+	x = i.totalswap - i.freeswap;
+#endif
+	/*
+	 * to be safe on arithmetic calcuation in case of either
+	 * !defined(CONFIG_ZSMALLOC) or entirely swap free
+	 */
+	if (x == 0)
+		x = 1;
+
+	return x;
+}
+
+unsigned long get_swap_comp_pool_nrpages(void)
+{
+	unsigned long x = 0;
+
+#if IS_ENABLED(CONFIG_ZSMALLOC)
+	x = global_zone_page_state(NR_ZSPAGES);
+#endif
+
+	return x;
+}
+
+static int swap_size_notifier(struct notifier_block *nb,
+			       unsigned long action, void *data)
+{
+	struct seq_file *s;
+
+	s = (struct seq_file *)data;
+	if (s)
+		seq_printf(s, "SwapSize:       %8lu kB\n",
+			(unsigned long)get_swap_comp_pool_nrpages() << (PAGE_SHIFT - 10));
+	else
+		pr_cont("SwapSize:%lukB ",
+			(unsigned long)get_swap_comp_pool_nrpages() << (PAGE_SHIFT - 10));
+	return 0;
+}
+
+static struct notifier_block swap_size_nb = {
+	.notifier_call = swap_size_notifier,
+};
+
 static int __init swapfile_init(void)
 {
 	int nid;
@@ -3749,6 +3800,8 @@ static int __init swapfile_init(void)
 
 	for_each_node(nid)
 		plist_head_init(&swap_avail_heads[nid]);
+
+	show_mem_extra_notifier_register(&swap_size_nb);
 
 	return 0;
 }
