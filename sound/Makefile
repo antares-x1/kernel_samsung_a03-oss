@@ -3,6 +3,9 @@
 #
 
 obj-$(CONFIG_SOUND) += soundcore.o
+# HS03 code for P210928-07436 by LiangWenye at 20211008 start
+obj-$(CONFIG_SOUND) += audio_class.o
+# HS03 code for P210928-07436 by LiangWenye at 20211008 end
 obj-$(CONFIG_SOUND_PRIME) += oss/
 obj-$(CONFIG_DMASOUND) += oss/
 obj-$(CONFIG_SND) += core/ i2c/ drivers/ isa/ pci/ ppc/ arm/ sh/ synth/ usb/ \
