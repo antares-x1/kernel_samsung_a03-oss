@@ -1,5 +1,6 @@
 #!/bin/bash
-
+chmod +x get-libartso.sh
+./get-libartso.sh
 export CROSS_COMPILE=$(pwd)/../toolchain/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 export ARCH=arm64
 export CLANG_TOOL_PATH=$(pwd)/../toolchain/clang/host/linux-x86/clang-r383902/bin/
